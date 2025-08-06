@@ -1,0 +1,70 @@
+train_dataset:
+  dataset:
+    name: image-folder
+    args:
+      root_path: "/home/ylwang/dataset/div2k/DIV2K_train_HR"
+      repeat: 20
+      cache: bin
+  wrapper:
+    name: irregular-sampled
+    args:
+      inp_size: 48
+      scale_max: 4
+      augment: true
+      sample_q: 2304
+  batch_size: 16
+
+val_dataset:
+  dataset:
+    name: image-folder
+    args:
+      root_path: "/home/ylwang/dataset/div2k/DIV2K_valid_HR"
+      first_k: 10
+      repeat: 160
+      cache: bin
+  wrapper:
+    name: irregular-sampled
+    args:
+      inp_size: 48
+      scale_max: 4
+      sample_q: 2304
+  batch_size: 16
+
+data_norm:
+  inp: {sub: [0.5], div: [0.5]}
+  gt: {sub: [0.5], div: [0.5]}
+
+model:
+  name: liif_extended
+  args:
+    irregular_spec:
+      name: irrtr_a13
+      args:
+        npoint: 2304
+        knn_k: 9
+        knn_k_prime: 12
+        in_channel: 46
+        batch : 16
+        inp_size : 48
+        outchannel : 131
+    encoder_spec:
+      name: edsr-baseline
+      args:
+        no_upsampling: true
+    imnet_spec:
+      name: mlp
+      args:
+        out_dim: 3
+        hidden_list: [256, 256, 256, 256]
+
+optimizer:
+  name: adam
+  args:
+    lr: 1.e-4
+epoch_max: 1000
+multi_step_lr:
+  milestones: [200, 400, 600, 800]
+  gamma: 0.5
+
+epoch_val: 1
+epoch_save: 100

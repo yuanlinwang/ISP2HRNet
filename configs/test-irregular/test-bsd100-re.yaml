@@ -1,0 +1,18 @@
+test_dataset: 
+  dataset:
+    name: image-folder-gray
+    args:
+      root_path: D:\wangyuanlin\dataset\BSDS100
+      cache: in_memory
+  wrapper:
+    name: regular-sampled
+    args: 
+      ratio_min: 0.8
+      normalize: False
+  batch_size: 1
+eval_type: benchmark-1
+eval_bsize: 30000
+
+data_norm:
+  inp: {sub: [0.5], div: [0.5]}
+  gt: {sub: [0.5], div: [0.5]}
