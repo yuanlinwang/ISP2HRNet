@@ -113,8 +113,8 @@ class LIIF_extended(nn.Module):
         return ret
 
     def forward(self, coordinate,value, coord, cell):
-        self.irr_to_re(coordinate,value)
-        self.gen_feat(self.init_recons)
+        self.irr_to_re(coordinate,value) # Conversion from irregular pixels to regular grid
+        self.gen_feat(self.init_recons) 
         return self.query_rgb(coord, cell),self.init_recons,self.gradient
     
 

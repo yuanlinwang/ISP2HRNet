@@ -1,7 +1,3 @@
-    
-import sys
-sys.path.append("D:/wangyuanlin/code/liif/")
-
 import torch
 from torch import nn
 from models.point_utils.pointnet2_utils import query_knn_point, index_points,\
@@ -32,16 +28,7 @@ def regular_xy_normalize(width,height):
 
 def sample_and_group(k, src,dst, value,gradient, feature,idx=None,src_value=False, \
                      return_normal=False, return_polar=False, cuda=False,batch_indices=None):
-    """
-    Input:
-        center: input points position data
-        normal: input points normal data
-        feature: input points feature
-    Return:
-        new_center: sampled points position data
-        new_normal: sampled points normal data
-        new_feature: sampled points feature
-    """
+   
     # src=src.to(dst.device)
     # group
     if idx==None: #整像素位置处的搜索
@@ -50,6 +37,7 @@ def sample_and_group(k, src,dst, value,gradient, feature,idx=None,src_value=Fals
         idx=idx[:, :, :k]
 
     #中心点绝对坐标,绝对像素值
+    # absolute coordinate and pixel value of the center pixel
     center_xy=src.unsqueeze(dim=-2).repeat(1,1,k-1,1)  # [B, npoint, nsample, 2]
     center_value=value.unsqueeze(dim=-2).repeat(1,1,k-1,1) # [B, npoint, nsample, 3]
     center_gradient=gradient.unsqueeze(dim=-2).repeat(1,1,k-1,1)
@@ -71,20 +59,15 @@ def sample_and_group(k, src,dst, value,gradient, feature,idx=None,src_value=Fals
         group_gradient =group_gradient[:,:,1:,:]
 
     #计算相对坐标,相对像素值差异，欧式距离
+    #Compute the relative coordinates, relative pixel value differences, and Euclidean distances.
     relative_xyz=group_xy-src.unsqueeze(2)# [B, N, K, 2]
   
     distance=relative_xyz.norm(p=2,dim=3).unsqueeze(3)# [B, N, K, 1]
 
-    # group polar
-    # if return_polar:
-    #     group_polar = xyz2sphere(group_center_norm)
-    #     group_center_norm = torch.cat([group_center_norm, group_polar], dim=-1)
     if feature is not None:
         center_feature=feature.unsqueeze(dim=-2).repeat(1,1,k-1,1)
         group_feature = index_points(feature, idx, cuda=cuda, is_group=True,batch_indices=batch_indices)
         
-        # new_feature = torch.cat([group_center_norm, group_normal, group_feature], dim=-1) if return_normal \
-        #     else torch.cat([group_center_norm, group_feature], dim=-1)
         if src_value:
             group_feature=group_feature[:,:,1:,:]
             new_feature = torch.cat([center_xy,center_value,center_gradient,center_feature,
@@ -131,7 +114,7 @@ def resort_points(points, idx,batch_indices,batch_indices_N):
 def group_by_umbrella_v2(xy, value,gradient=None, k=6, cuda=False, idx=None,batch_indices=None,batch_indices_N=None):
     """
     计算三角形顶点的光度和几何信息
-
+    Compute the photometric and geometric information at the triangle's vertices.
     """
     if idx==None: #整像素位置处的搜索
         idx = query_knn_point(k,xy,xy, cuda=cuda)
@@ -140,14 +123,15 @@ def group_by_umbrella_v2(xy, value,gradient=None, k=6, cuda=False, idx=None,batc
     group_xyz = index_points(xy, idx, cuda=cuda, is_group=True,batch_indices=batch_indices)[:, :, 1:]  # [B, N', K-1, 3] #近邻点 不包含中心点 [16,2304,8,2]
     group_value=index_points(value, idx, cuda=cuda, is_group=True,batch_indices=batch_indices)[:, :, 1:] #[16,2304,8,3]
 
-    group_value_norm = group_value - value.unsqueeze(-2)#像素值相对值
-    group_xyz_norm = group_xyz - xy.unsqueeze(-2)#坐标相对值
+    group_value_norm = group_value - value.unsqueeze(-2)#像素值相对值 relative pixel value
+    group_xyz_norm = group_xyz - xy.unsqueeze(-2)#坐标相对值 relative coordinate
     group_phi = xyz2sphere(group_xyz_norm).squeeze() # [16,2304,8]
     # sort_idx = group_phi.argsort(dim=-1)  # [B, N', K-1] #[16,2304,8]
 
     group_phi,sort_idx=group_phi.sort()
     group_phi_roll= torch.roll(group_phi,-1,dims=-1)
 
+    # Coordinates
     #坐标与其逆时针roll
     # [B, N', K-1, 1, 3] [16,2304,5,1,2]
     sorted_group_xyz = resort_points(group_xyz_norm, sort_idx,batch_indices=batch_indices,batch_indices_N=batch_indices_N)#[16,2304,8,2]
@@ -155,16 +139,19 @@ def group_by_umbrella_v2(xy, value,gradient=None, k=6, cuda=False, idx=None,batc
     group_centriod = torch.zeros_like(sorted_group_xyz.unsqueeze(-2))#[16,2304,8,1,2] all=0
     umbrella_group_xyz = torch.cat([group_centriod, sorted_group_xyz.unsqueeze(-2), sorted_group_xyz_roll.unsqueeze(-2)], dim=-2)#[16,2304,8,3,2]
     
+    # relative pixel value
     #相对像素值 与逆时针roll
     sorted_group_value = resort_points(group_value_norm, sort_idx,batch_indices=batch_indices,batch_indices_N=batch_indices_N)#[16,2304,8,2]
     sorted_group_value_roll = torch.roll(sorted_group_value, -1, dims=-2)#[16,2304,8,2]
     group_centriod_value = torch.zeros_like(sorted_group_value.unsqueeze(-2))
     umbrella_group_value=torch.cat([group_centriod_value, sorted_group_value.unsqueeze(-2), sorted_group_value_roll.unsqueeze(-2)], dim=-2)#[16,2304,5,3,3]
     
+    # relative coordinate
     #绝对坐标值
     sorted_group_xyz_un = resort_points(group_xyz, sort_idx,batch_indices=batch_indices,batch_indices_N=batch_indices_N)#[16,2304,8,2]
     sorted_group_xyz_un_roll = torch.roll(sorted_group_xyz_un, -1, dims=-2)#[16,2304,8,2]
 
+    # absolute pixel value
     #绝对像素值
     sorted_group_value_un = resort_points(group_value, sort_idx,batch_indices=batch_indices,batch_indices_N=batch_indices_N)#[16,2304,8,2]
     sorted_group_value_un_roll = torch.roll(sorted_group_value_un, -1, dims=-2)#[16,2304,8,2]
@@ -191,7 +178,7 @@ def group_by_umbrella_v2(xy, value,gradient=None, k=6, cuda=False, idx=None,batc
 class GradientCalculation_CP_Delaunay_weight(nn.Module):
     """
     Gradient Calculation Module: through cross product
-    根据面积加权
+    Area-weighted Gradient Estimation
     """
 
     def __init__(self, k, batch,npoint, aggr_type='sum', return_dist=False, random_inv=False, cuda=False):
@@ -219,21 +206,23 @@ class GradientCalculation_CP_Delaunay_weight(nn.Module):
         gradient_c=self.gradient_c
         gradient=self.gradient
         
-        #对每一个离散点找到了其KNN # [B, N, K, C]
+        #Found the K-nearest neighbors (KNN) for each discrete point # [B, N, K, C]
         idx=query_knn_point(self.k, coordinate, coordinate, cuda=self.cuda)
 
+        #K-nearest neighbor coordinates sorted in a counterclockwise direction. [16,2304,6,3,2] 
+        #dim3 :一维是中心点坐标，全0  1：逆时针排序的坐标 2：roll后的数据
+        #group value[16,2304,6,3,3]
         group_xy,group_value, umbrella_group_all,sort_idx= group_by_umbrella_v2(coordinate, value,gradient=None, k=self.k,idx=idx,\
-                                batch_indices=self.batch_indices,batch_indices_N=self.batch_indices_N) #逆时针旋转排序的k近邻坐标 [16,2304,6,3,2] 
-                                                                            #dim3 :一维是中心点坐标，全0  1：逆时针排序的坐标 2：roll后的数据
-                                                                            #group value[16,2304,6,3,3]
+                                batch_indices=self.batch_indices,batch_indices_N=self.batch_indices_N) 
         
-        for i in range(3): #三通道分别计算梯度
+        
+        for i in range(3): #Compute the gradient for RGB channels separately.
             group_xyz=torch.cat([group_xy,group_value[...,i].unsqueeze(dim=4)],dim=-1)#[16,2304,6,3,3]
-            # normal
+            #normal
             group_gradient = cal_normal_3d(group_xyz, random_inv=False, is_group=True)#[16,2304,6,3]     
-            # 记录
+            #record
             gradient_c[...,i*3:i*3+3]=group_gradient #归一化了 #[-1,1]
-        #求形成的每个三角形的面积
+        #Compute the area of each formed triangle.
         area=cal_area_2D(group_xy,self.pad) #[16,2304,8]
         area_norm=torch.sum(area,dim=-1).unsqueeze(dim=-1)#[16,2304,1]
         #check nan
@@ -243,7 +232,7 @@ class GradientCalculation_CP_Delaunay_weight(nn.Module):
         gradient_c=(gradient_c*area_norm).sum(dim=-2)#[16,2304,9]
        
         max=0
-        #
+        #channel R
         gradient[...,0]=-gradient_c[...,0]/gradient_c[...,2]
         gradient[...,1]=-gradient_c[...,1]/gradient_c[...,2]
     
@@ -251,7 +240,8 @@ class GradientCalculation_CP_Delaunay_weight(nn.Module):
         if (idx_c==1).sum() !=0:
             gradient[...,0][idx_c]=max
             gradient[...,1][idx_c]=max
-        
+            
+        #channel G
         gradient[...,2]=-gradient_c[...,3]/gradient_c[...,5]
         gradient[...,3]=-gradient_c[...,4]/gradient_c[...,5]
         idx_c = gradient_c[...,5] == 0
@@ -259,32 +249,28 @@ class GradientCalculation_CP_Delaunay_weight(nn.Module):
             gradient[...,2][idx_c]=max
             gradient[...,3][idx_c]=max
 
+        #channel B
         gradient[...,4]=-gradient_c[...,6]/gradient_c[...,8]
         gradient[...,5]=-gradient_c[...,7]/gradient_c[...,8]
         idx_c = gradient_c[...,8] == 0
         if (idx_c==1).sum() !=0:
             gradient[...,4][idx_c]=max
             gradient[...,5][idx_c]=max
+            
         gradient =gradient /10000.
+        
         if torch.any(torch.isnan(gradient)) is True:
             print("error")
         assert not torch.any(torch.isnan(gradient))
-         #角度
+        
+        #angle
         phi=umbrella_group_all[...,-2:] #[16,2304,8,2]
         sin_angle=torch.abs(torch.sin((phi[:,:,:,1]-phi[:,:,:,0]-0.5)*2*torch.pi))
-        #相对x轴的角度 变为三角形两条边的夹角
+        
+        #collect information
         umbrella_group_all=torch.cat([umbrella_group_all[...,:-2],sin_angle.unsqueeze(dim=-1)],dim=-1)
         
         return gradient,idx,umbrella_group_all,sort_idx
-
-
-    
-    
-
-    
-
-    
-
 
 
 
@@ -294,7 +280,7 @@ def group_by_umbrella_gradient(group_gradient,sort_idx,batch_indices,batch_indic
 
     """
 
-    #梯度
+    #gradient
     sorted_group_gradient = resort_points(group_gradient, sort_idx,batch_indices,batch_indices_N)#[16,2304,8,6]
 
     sorted_group_gradient_roll = torch.roll(sorted_group_gradient, -1, dims=-2)#[16,2304,8,6]
@@ -322,8 +308,6 @@ class ImplicitFeatureExtract_umbrella_v2(nn.Module):
         self.pos_channel = pos_channel
         self.group_all = group_all
 
-
-        # mlp_l0+mlp_f0 can be considered as the first layer of mlp_convs
         last_channel = in_channel
         for out_channel in mlp[0:]:
             self.mlp_convs.append(nn.Conv2d(last_channel, out_channel, 1))
@@ -391,7 +375,7 @@ class IRRETORE(nn.Module):
 
         self.map2= nn.Conv2d(last_channel, last_channel, 1) 
         self.bn2=nn.BatchNorm2d(last_channel)
-        #给color通道升维
+
         if color_mlp is not None:
             last_channel = in_channel
             for out_channel in color_mlp[0:]:
@@ -399,7 +383,7 @@ class IRRETORE(nn.Module):
                 self.mlp_bns_color.append(nn.BatchNorm2d(out_channel))
                 last_channel = out_channel
         
-        #乘积后经过的网络
+
         self.color_map2 = nn.Conv2d(last_channel, 3, 1) 
         
         view_shape = list([batch,npoint,nsample])
@@ -421,17 +405,18 @@ class IRRETORE(nn.Module):
         group_value=new_feature[:,4:7,:,:].clone()
         group_feature=new_feature[:,13:13+feature.shape[2],:,:].clone()
        
-        #所有特征经过mlp运算 [batch,channel,nsample,npoint]
+        #processed by MLP [batch,channel,nsample,npoint]
         for i, conv in enumerate(self.mlp_convs):
             bn = self.mlp_bns[i]
             fea_filter = F.relu(bn(conv(fea_filter)))
-        # new_feature = torch.max(new_feature, 2)[0]
+            
+        # filter for feature
         fea_filter=self.map2(fea_filter)
         out_feature=torch.mul(group_feature,fea_filter)
         out_feature=F.relu(self.bn2(out_feature))
         out_feature=torch.mean(out_feature,dim=2)
 
-        #color 通道 filter
+        # filter for value channel 
         #[batch,channel,nsample,npoint]
         for i, conv in enumerate(self.mlp_convs_color):
             bn = self.mlp_bns_color[i]

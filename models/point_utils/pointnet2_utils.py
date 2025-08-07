@@ -1,7 +1,6 @@
 """
 Author: wyl
-Date: 20230705
-orign:https://github.com/hancyran/RepSurf/blob/main/classification/modules/pointnet2_utils.py
+modify from :https://github.com/hancyran/RepSurf/blob/main/classification/modules/pointnet2_utils.py
 """
 
 import torch
@@ -114,7 +113,7 @@ def cal_normal_3d(group_xyz, random_inv=False, is_group=False):
     :param return_intersect:
     :param return_const:
     :return: [B, N, 3]
-    #返回三维梯度
+    # return 3D gradient
     """#group_xyz[16,2304,6,3,3]
     edge_vec1 = group_xyz[..., 1, :] - group_xyz[..., 0, :]  # [B, N, 3] [16,2304,6,3]
     edge_vec2 = group_xyz[..., 2, :] - group_xyz[..., 0, :]  # [B, N, 3]

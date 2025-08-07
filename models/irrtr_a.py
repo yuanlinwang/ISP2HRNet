@@ -2,7 +2,6 @@ import sys
 sys.path.append(".\\..\\")
 
 import torch.nn as nn
-import torch
 from models import register
 from models.point_utils.gradient_utils_v2 import IRRETORE,regular_xy_normalize,GradientCalculation_CP_Delaunay_weight,ImplicitFeatureExtract_umbrella_v2
 
@@ -28,16 +27,15 @@ class IRRTR_a13(nn.Module):
 
 
     def forward(self,coordinate,value):
-
-        gradient,idx,group_all,sort_idx=self.gradientcalculation(coordinate,value)
         
+        # GD module
+        gradient,idx,group_all,sort_idx=self.gradientcalculation(coordinate,value) 
         
+        # LGE module
         feature1 = self.sf1(gradient, group_all,sort_idx,idx)
         
-
-        out=self.retrans(self.regular_coordinate,coordinate, value, gradient, feature1.permute(0,2,1))
-        
-        
+        # IRC module
+        out=self.retrans(self.regular_coordinate,coordinate, value, gradient, feature1.permute(0,2,1)) 
 
         return out,gradient
     
